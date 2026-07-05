@@ -29,7 +29,6 @@ dist/
 logs/
 tmp/
 temp/
-note/
 
 # IDE and editor files
 .idea/
