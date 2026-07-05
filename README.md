@@ -9,7 +9,7 @@ DeepSeek 的 OpenAI-compatible API。
 .
 ├── app
 │   ├── agents          # Agent 组装
-│   ├── llms            # 模型配置
+│   ├── llms            # 模型配置，统一通过 init_chat_model 初始化
 │   ├── tools           # Agent 可调用工具
 │   └── config.py       # 环境变量配置
 ├── main.py             # CLI 入口
@@ -27,6 +27,17 @@ cp .env.example .env
 
 ```text
 DEEPSEEK_API_KEY=your_deepseek_api_key
+DEEPSEEK_API_BASE=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL_KWARGS={}
+CLAUDE_API_KEY=your_claude_api_key
+CLAUDE_API_BASE=https://api.anthropic.com
+CLAUDE_MODEL=claude-opus-4-6
+CLAUDE_MODEL_KWARGS={}
+GPT_API_KEY=your_gpt_api_key
+GPT_API_BASE=https://api.openai.com/v1
+GPT_MODEL=gpt-5.5
+GPT_MODEL_KWARGS={}
 ```
 
 如果使用 shell 环境变量，也可以直接执行：
@@ -59,7 +70,19 @@ pip install -r requirements.txt
 模型连通测试：
 
 ```bash
-python -m tests.test_model
+python -m tests.llms.test_deepseek_model
+```
+
+Anthropic Claude 连通测试：
+
+```bash
+python -m tests.llms.test_claude_model
+```
+
+GPT 兼容接口连通测试：
+
+```bash
+python -m tests.llms.test_gpt_model
 ```
 
 staged 文件检查：

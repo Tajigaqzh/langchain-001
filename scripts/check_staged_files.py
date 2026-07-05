@@ -137,6 +137,7 @@ def find_commented_code_blocks(path: Path, content: str) -> tuple[list[str], lis
     for index, line in enumerate(lines, start=1):
         bypass = parse_bypass(line)
         if bypass:
+            flush_block()
             is_next_line, reason = bypass
             if is_next_line:
                 next_line_bypasses[index + 1] = reason
@@ -145,6 +146,7 @@ def find_commented_code_blocks(path: Path, content: str) -> tuple[list[str], lis
             continue
 
         if f"staged-check-enable {COMMENTED_CODE_RULE}" in line:
+            flush_block()
             active_bypass_reason = None
             continue
 

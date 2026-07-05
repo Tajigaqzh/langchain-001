@@ -6,15 +6,15 @@ from app.config import Settings
 from app.llms.factory import ChatModelFactory, ChatModelSpec, ModelProvider
 
 
-def build_deepseek_llm(settings: Settings) -> BaseChatModel:
-    """Create a DeepSeek chat model from project settings."""
+def build_gpt_llm(settings: Settings) -> BaseChatModel:
+    """Create an OpenAI-compatible GPT chat model from project settings."""
     return ChatModelFactory.create(
         ChatModelSpec(
             provider=ModelProvider.OPENAI,
-            model=settings.deepseek_model,
-            api_key=settings.deepseek_api_key,
-            base_url=settings.deepseek_base_url,
+            model=settings.gpt_model,
+            api_key=settings.gpt_api_key,
+            base_url=settings.gpt_base_url,
             temperature=settings.temperature,
-            model_kwargs=settings.deepseek_model_kwargs,
+            model_kwargs=settings.gpt_model_kwargs,
         )
     )

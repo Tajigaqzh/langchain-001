@@ -39,7 +39,7 @@ commit message 的 type 必须从以下类型中选择：
 - `conda install -y python-dotenv`：通过 conda 安装 dotenv 支持。
 - `pip install -r requirements.txt`：安装 Python 依赖。
 - `python main.py`：启动 CLI Agent。
-- `python -m tests.test_model`：执行 DeepSeek 模型连通测试。
+- `python -m tests.llms.test_deepseek_model`：执行 DeepSeek 模型连通测试。
 - `python scripts/check_staged_files.py`：检查本次 staged 文件。
 - `python -m compileall app tests main.py`：执行 Python 语法编译检查。
 
@@ -130,6 +130,6 @@ def build_deepseek_llm(settings: Settings) -> ChatOpenAI:
 
 - 每次需求改动完毕后，至少执行与变更范围匹配的验证命令。
 - 普通 Python 代码改动优先执行 `python -m compileall app tests main.py`。
-- 修改模型接入后，可以执行 `python -m tests.test_model` 做真实连通测试。
+- 修改模型接入后，可以执行 `python -m tests.llms.test_deepseek_model` 做真实连通测试。
 - 修改 staged 检查脚本后，应执行 `python scripts/check_staged_files.py`。
 - 不要求每次都执行完整构建或真实 API 连通测试。
