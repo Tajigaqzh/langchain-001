@@ -60,7 +60,42 @@ print(response.response_metadata)  # 包含 token 使用量、模型名等信息
 print(response.dict())
 ```
 
-### 2.3 使用示例
+### 2.3 传递 config 参数
+
+`invoke()` 除了接收输入内容，还可以接收运行时 `config` 参数。
+
+这个参数通常用于：
+
+- 给本次调用设置 `run_name`
+- 添加 `tags`、`metadata` 方便 LangSmith 或日志追踪
+- 传递 `callbacks` 挂载回调
+- 在可并发执行的 Runnable 中控制运行时行为
+
+```python
+from app.llms import build_deepseek_llm
+from app.config import load_settings
+
+settings = load_settings()
+llm = build_deepseek_llm(settings)
+
+response = llm.invoke(
+    "总结一下 LangChain 的 invoke 方法",
+    config={
+        "run_name": "deepseek_invoke_demo",
+        "tags": ["docs", "invoke"],
+        "metadata": {
+            "feature": "model-call",
+            "provider": "deepseek",
+        },
+    },
+)
+
+print(response.content)
+```
+
+如果你在链、Agent 或更复杂的 Runnable 组合中调用模型，`config` 会沿调用链继续向下传递，因此很适合做统一追踪。
+
+### 2.4 使用示例
 
 项目中的实际使用（`tests/test_deepseek_model.py`）：
 
@@ -74,7 +109,7 @@ def main() -> None:
     print(response.content)
 ```
 
-### 2.4 适用场景
+### 2.5 适用场景
 
 - ✅ 简单的问答场景
 - ✅ 不需要实时反馈的任务

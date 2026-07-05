@@ -61,7 +61,7 @@ class ChatModelSpec:
 
 ### 1.3 使用示例
 
-**DeepSeek 模型**：
+**DeepSeek 模型** (`app/llms/models/deepseek.py`)：
 
 ```python
 def build_deepseek_llm(settings: Settings) -> BaseChatModel:
@@ -78,7 +78,7 @@ def build_deepseek_llm(settings: Settings) -> BaseChatModel:
     )
 ```
 
-**Claude 模型**：
+**Claude 模型** (`app/llms/models/claude.py`)：
 
 ```python
 def build_claude_llm(settings: Settings) -> BaseChatModel:
@@ -88,14 +88,14 @@ def build_claude_llm(settings: Settings) -> BaseChatModel:
             provider=ModelProvider.ANTHROPIC,
             model=settings.claude_model,
             api_key=settings.claude_api_key,
-            base_url=normalize_anthropic_base_url(settings.claude_base_url),
+            base_url=settings.claude_base_url,
             temperature=settings.temperature,
             model_kwargs=settings.claude_model_kwargs,
         )
     )
 ```
 
-**GPT 模型**：
+**GPT 模型** (`app/llms/models/gpt.py`)：
 
 ```python
 def build_gpt_llm(settings: Settings) -> BaseChatModel:
@@ -118,6 +118,93 @@ def build_gpt_llm(settings: Settings) -> BaseChatModel:
 - **类型安全**：使用 `ChatModelSpec` 数据类和枚举保证参数正确
 - **可扩展**：通过 `model_kwargs` 传递额外参数
 - **自动适配**：`init_chat_model()` 根据 provider 自动选择对应的实现类
+
+### 1.5 客户端封装
+
+除了 `build_xxx_llm()` 这种“只返回模型实例”的方式，项目现在还提供了客户端封装类，用来统一暴露调用方法：
+
+- `DeepSeekChatClient`
+- `ClaudeChatClient`
+- `GPTChatClient`
+
+这些类都继承自 `BaseChatModelClient`，共享以下方法：
+
+- `invoke()`
+- `ainvoke()`
+- `stream()`
+- `astream()`
+- `batch()`
+- `abatch()`
+
+**基类定义** (`app/llms/client.py`)：
+
+```python
+from abc import ABC, abstractmethod
+
+class BaseChatModelClient(ABC):
+    """Shared invoke helpers for project chat models."""
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self._llm: BaseChatModel | None = None
+
+    @abstractmethod
+    def _build_llm(self) -> BaseChatModel:
+        """Build the concrete chat model instance."""
+
+    @property
+    def llm(self) -> BaseChatModel:
+        if self._llm is None:
+            self._llm = self._build_llm()
+        return self._llm
+
+    def invoke(self, input_data: Any, config: RunnableConfig | None = None, **kwargs: Any) -> AIMessage:
+        return self.llm.invoke(input_data, config=config, **kwargs)
+
+    async def ainvoke(self, input_data: Any, config: RunnableConfig | None = None, **kwargs: Any) -> AIMessage:
+        return await self.llm.ainvoke(input_data, config=config, **kwargs)
+
+    def stream(self, input_data: Any, config: RunnableConfig | None = None, **kwargs: Any):
+        return self.llm.stream(input_data, config=config, **kwargs)
+
+    def astream(self, input_data: Any, config: RunnableConfig | None = None, **kwargs: Any):
+        return self.llm.astream(input_data, config=config, **kwargs)
+
+    def batch(self, inputs: list[Any], config: RunnableConfig | list[RunnableConfig] | None = None, **kwargs: Any):
+        return self.llm.batch(inputs, config=config, **kwargs)
+
+    async def abatch(self, inputs: list[Any], config: RunnableConfig | list[RunnableConfig] | None = None, **kwargs: Any):
+        return await self.llm.abatch(inputs, config=config, **kwargs)
+```
+
+**具体模型实现**（以 DeepSeek 为例）：
+
+```python
+class DeepSeekChatClient(BaseChatModelClient):
+    """Project DeepSeek client with shared invoke and stream methods."""
+
+    def _build_llm(self) -> BaseChatModel:
+        """Build the configured DeepSeek model instance."""
+        return build_deepseek_llm(self.settings)
+```
+
+**使用示例**：
+
+```python
+from app.config import load_settings
+from app.llms import DeepSeekChatClient
+
+settings = load_settings()
+client = DeepSeekChatClient(settings)
+
+response = client.invoke("请用一句话介绍你自己")
+print(response.content)
+```
+
+适用区别：
+
+- `build_xxx_llm()`：适合直接把底层 LangChain 模型对象传给 Agent、Chain 或其他 Runnable
+- `*ChatClient`：适合在项目业务代码里统一调用六种方法，减少重复写 `llm.invoke(...)`、`llm.stream(...)`
 
 ## 二、传统方法：直接实例化
 
@@ -151,7 +238,7 @@ from pydantic import SecretStr
 claude_llm = ChatAnthropic(
     model_name=settings.claude_model,  # 注意：这里是 model_name，不是 model
     api_key=SecretStr(settings.claude_api_key),
-    base_url=normalize_anthropic_base_url(settings.claude_base_url),
+    base_url=settings.claude_base_url,
     temperature=settings.temperature,
 )
 ```
@@ -181,22 +268,13 @@ api_key=SecretStr(settings.api_key)
 api_key=settings.api_key  # 可能在日志中泄露
 ```
 
-### 3.2 Anthropic Base URL 规范化
+### 3.2 Anthropic Base URL 配置要求
 
-Anthropic SDK 不接受带 `/v1` 后缀的 base URL，需要规范化：
-
-```python
-def normalize_anthropic_base_url(base_url: str) -> str:
-    """Return an Anthropic SDK base URL without a duplicated /v1 path."""
-    normalized = base_url.rstrip("/")
-    if normalized.endswith("/v1"):
-        return normalized.removesuffix("/v1")
-    return normalized
-```
+Anthropic 的 `base_url` 配置应直接写成不带 `/v1` 后缀的地址。
 
 **示例**：
-- 输入：`https://api.anthropic.com/v1`
-- 输出：`https://api.anthropic.com`
+- 正确：`https://api.anthropic.com`
+- 错误：`https://api.anthropic.com/v1`
 
 ### 3.3 Provider 选择
 

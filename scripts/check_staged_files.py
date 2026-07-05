@@ -2,7 +2,6 @@
 """Check staged files before commit for this Python Agent project."""
 
 import ast
-import os
 import py_compile
 import re
 import subprocess

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.config import load_settings
-from app.llms import build_gpt_llm
+from app.llms.models.gpt import build_gpt_llm
 
 
 def main() -> None:
