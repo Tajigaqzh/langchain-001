@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from main import _build_agent_config, _build_model_profile
+from app.cli.model_profile import build_agent_config, build_model_profile
 
 
 def test_build_model_profile_for_gpt_includes_reasoning() -> None:
     """Verify GPT model profile records provider, reasoning, and memory context."""
-    profile = _build_model_profile(
+    profile = build_model_profile(
         "gpt-5.5",
         "high",
         "user-123",
@@ -21,14 +21,14 @@ def test_build_model_profile_for_gpt_includes_reasoning() -> None:
 
 def test_build_agent_config_logs_model_profile_metadata() -> None:
     """Verify LangGraph config carries model profile data for LangSmith traces."""
-    profile = _build_model_profile(
+    profile = build_model_profile(
         "deepseek",
         "medium",
         "default",
         "memory",
     )
 
-    config = _build_agent_config("default", profile)
+    config = build_agent_config("default", profile)
 
     assert config["configurable"] == {"thread_id": "default"}
     assert config["metadata"] == {"model_profile": profile}
