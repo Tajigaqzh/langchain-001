@@ -196,7 +196,24 @@ python -m tests.llms.test_gpt_model
 python -m tests.agents.test_agent_tools
 ```
 
-### Staged 文件检查
+### 代码质量检查
+
+**Pylint 检查**
+
+```bash
+# 检查所有文件
+python scripts/run_pylint.py
+
+# 检查特定目录
+python scripts/run_pylint.py app
+
+# 检查特定文件
+python scripts/run_pylint.py app/llms/client.py
+```
+
+配置文件：`.pylintrc`
+
+**Staged 文件检查**
 
 ```bash
 python scripts/check_staged_files.py
