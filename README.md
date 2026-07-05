@@ -7,8 +7,10 @@
 - **多提供商支持**：通过统一接口支持 DeepSeek、Claude、GPT
 - **工厂模式**：集中式 LLM 和 Agent 创建
 - **注册表管理**：动态 Agent 注册和查找
-- **模块化工具**：按功能分类的工具集（文件系统、Git、网络、Python、Shell、Web）
+- **模块化工具**：按功能分类的工具集（文件系统、Git、网络、Python、Shell、Web、MCP）
 - **灵活配置**：基于环境变量的配置管理
+- **CLI 体验**：支持 Rich 输出、流式响应、模型切换、推理等级切换和失败重试
+- **短期记忆**：支持内存或 SQLite checkpoint，并可配置 SQLite 缓存保留时间
 
 ## 目录结构
 
@@ -23,6 +25,14 @@
 │   │   │   ├── claude.py
 │   │   │   └── gpt.py
 │   │   └── __init__.py
+│   ├── cli             # CLI 会话、命令、渲染和重试控制
+│   │   ├── commands.py      # /model、/reasoning、/mcp 等命令
+│   │   ├── errors.py        # 模型错误分类
+│   │   ├── model_profile.py # 模型 profile 和 LangSmith metadata
+│   │   ├── renderers.py     # 普通/流式输出渲染
+│   │   ├── retry.py         # 模型调用重试
+│   │   ├── runtime.py       # CLI 运行时状态
+│   │   └── session.py       # CLI 启动和主循环
 │   ├── llms            # LLM 模型管理
 │   │   ├── client.py        # 统一客户端接口
 │   │   ├── factory.py       # LLM 工厂
@@ -35,14 +45,21 @@
 │   │   ├── common.py        # 通用工具（时间、计算器等）
 │   │   ├── filesystem.py    # 文件系统操作
 │   │   ├── git_tools.py     # Git 操作
+│   │   ├── mcp.py           # MCP 工具加载
 │   │   ├── network_tools.py # 网络工具
 │   │   ├── python_tools.py  # Python 执行
 │   │   ├── shell_tools.py   # Shell 命令
 │   │   ├── web_tools.py     # Web 搜索与抓取
 │   │   ├── utility.py       # 实用工具
 │   │   └── __init__.py
+│   ├── memory          # LangGraph 短期记忆
+│   │   ├── short_term.py    # memory/sqlite checkpointer 和缓存清理
+│   │   └── __init__.py
 │   ├── messages        # 消息构建
 │   │   ├── builders.py      # 消息构建器
+│   │   └── __init__.py
+│   ├── ui              # 终端 UI 输出
+│   │   ├── console.py       # Rich 控制台封装
 │   │   └── __init__.py
 │   └── config.py       # 配置管理
 ├── docs                # 文档
@@ -51,13 +68,17 @@
 ├── tests               # 测试
 │   ├── agents/
 │   ├── llms/
-│   └── tools/
+│   ├── tools/
+│   ├── test_cli_model_profile.py
+│   └── test_config.py
 ├── scripts             # 辅助脚本
-│   └── check_staged_files.py
+│   ├── check_staged_files.py
+│   └── run_pylint.py
 ├── main.py             # CLI 入口
 ├── requirements.txt
+├── pytest.ini
 ├── .env.example
-└── CLAUDE.md           # 项目开发指南
+└── AGENTS.md           # 项目开发指南
 ```
 
 ## 快速开始
@@ -154,7 +175,7 @@ AGENT_STREAM_DELAY=0.015
 
 也可以临时用 `--stream` 或 `--no-stream` 覆盖是否流式输出。
 
-如需接入 MCP 工具，先安装可选适配器：
+如需接入 MCP 工具，依赖清单已经包含 `langchain-mcp-adapters`。如果当前环境还没安装，执行：
 
 ```bash
 pip install langchain-mcp-adapters
@@ -179,7 +200,13 @@ AGENT_MCP_CONFIG_PATH=.data/mcp.json
 }
 ```
 
-未配置 `AGENT_MCP_CONFIG_PATH` 时不会加载 MCP。配置了 MCP 但未安装适配器时，CLI 会在启动时提示安装 `langchain-mcp-adapters`。
+未配置 `AGENT_MCP_CONFIG_PATH` 时不会加载 MCP。配置了 MCP 但当前环境缺少适配器时，CLI 会在启动或 `/mcp reload` 时提示安装 `langchain-mcp-adapters`。
+
+修改 `.env` 或 MCP JSON 后，可以在 CLI 中执行以下命令刷新工具，不需要重启进程：
+
+```text
+/mcp reload
+```
 
 CLI 会在启动和模型切换时输出当前 model profile，包括模型名、provider、reasoning 和 memory 信息。每次 Agent 调用也会把同一份 profile 写入 LangChain config 的 `metadata.model_profile` 和 `tags`，开启 LangSmith 后可以按这些字段过滤 trace。
 
@@ -218,10 +245,11 @@ llm = build_deepseek_llm()  # 自动从环境变量加载配置
 Agent 使用注册表模式管理：
 
 ```python
-from app.agents.registry import agent_registry
+from app.agents.registry import build_agent_for_model
+from app.config import load_settings
 
-# 获取 Agent
-agent = agent_registry.get("deepseek")  # 或 "claude", "gpt"
+settings = load_settings()
+agent = build_agent_for_model("gpt-5.5", settings)
 
 # 运行 Agent
 result = agent.invoke({"messages": [{"role": "user", "content": "你好"}]})
@@ -232,14 +260,23 @@ result = agent.invoke({"messages": [{"role": "user", "content": "你好"}]})
 工具按功能分类，使用 LangChain 的 `@tool` 装饰器：
 
 ```python
-from app.tools import get_all_tools
+from app.tools import get_tools
 
 # 获取所有工具
-tools = get_all_tools()
+tools = get_tools()
 
 # 获取特定类别的工具
-from app.tools.filesystem import list_directory, read_file
+from app.tools.filesystem import list_directory, read_text_file
 from app.tools.common import current_time, calculator
+```
+
+如需加载 MCP 工具，传入已读取的 settings：
+
+```python
+from app.config import load_settings
+from app.tools import get_tools
+
+tools = get_tools(load_settings())
 ```
 
 ## 测试
@@ -297,7 +334,7 @@ python scripts/check_staged_files.py
 ### 添加新工具
 
 1. 在对应的工具文件中添加 `@tool` 函数（如 `app/tools/utility.py`）
-2. 在 `app/tools/__init__.py` 的 `get_all_tools()` 中注册
+2. 在 `app/tools/__init__.py` 的 `get_local_tools()` 中注册本地工具
 3. 编写测试
 
 示例：
@@ -336,13 +373,14 @@ def my_new_tool(param: str) -> str:
 
 - 为 Shell/Python/Git 等执行型工具增加统一 `CommandRunner`，支持受限环境变量、工作目录限制、超时、网络策略和写入路径审批。
 
-详细开发规范见 `CLAUDE.md`。
+详细开发规范见 `AGENTS.md`。
 
 ## 文档
 
 - [`docs/01_model_init.md`](docs/01_model_init.md) - 模型初始化指南
 - [`docs/02_model_invoke.md`](docs/02_model_invoke.md) - 模型调用方法
-- [`CLAUDE.md`](CLAUDE.md) - 完整的项目开发指南
+- [`AGENTS.md`](AGENTS.md) - 当前项目协作与提交规范
+- [`CLAUDE.md`](CLAUDE.md) - Claude 使用的项目指南
 
 ## License
 
