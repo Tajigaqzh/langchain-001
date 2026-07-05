@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+
 from app.agents import (
     build_agent_for_model,
     get_available_models,
@@ -7,7 +9,16 @@ from app.agents import (
     list_supported_models,
 )
 from app.config import load_settings
+from app.memory import (
+    DEFAULT_MEMORY_BACKEND,
+    DEFAULT_MEMORY_DB_PATH,
+    DEFAULT_THREAD_ID,
+    MEMORY_BACKENDS,
+    build_thread_config,
+    open_memory_checkpointer,
+)
 from app.messages import build_role_tuples
+from app.ui import CliConsole
 
 REASONING_LEVELS = ["low", "medium", "high", "extra_high"]
 DEFAULT_GPT_MODEL = "gpt-5.5"
@@ -57,6 +68,52 @@ def _format_model_changed_message(model_name: str, reasoning_level: str) -> str:
     if is_gpt_model(model_name):
         return f"Model changed to {model_name} {reasoning_level}"
     return f"Model changed to {model_name}"
+
+
+def _get_model_entry(model_name: str):
+    """Return the supported model entry for a CLI model name."""
+    normalized_name = model_name.strip().lower()
+    for entry in list_supported_models():
+        if entry.name == normalized_name:
+            return entry
+    raise ValueError(f"Unsupported model: {model_name}")
+
+
+def _build_model_profile(
+    model_name: str,
+    reasoning_level: str,
+    thread_id: str,
+    memory_label: str,
+) -> dict[str, object]:
+    """Build structured model metadata for local logs and LangSmith traces."""
+    entry = _get_model_entry(model_name)
+    return {
+        "model": entry.name,
+        "provider": entry.provider,
+        "reasoning_effort": reasoning_level if entry.provider == "gpt" else None,
+        "description": entry.description,
+        "thread_id": thread_id,
+        "memory_backend": memory_label,
+    }
+
+
+def _build_agent_config(
+    thread_id: str,
+    model_profile: dict[str, object],
+) -> dict[str, object]:
+    """Build LangGraph config with memory routing and trace metadata."""
+    config = build_thread_config(thread_id)
+    model_name = str(model_profile["model"])
+    provider = str(model_profile["provider"])
+    memory_backend = str(model_profile["memory_backend"]).split(" ", maxsplit=1)[0]
+    config["tags"] = [
+        "cli-agent",
+        f"model:{model_name}",
+        f"provider:{provider}",
+        f"memory:{memory_backend}",
+    ]
+    config["metadata"] = {"model_profile": model_profile}
+    return config
 
 
 def _handle_model_command(
@@ -116,19 +173,63 @@ def _handle_reasoning_command(user_input: str, current_level: str):
     return requested_level, f"Reasoning changed to {requested_level}", True
 
 
-def run_cli() -> None:
-    """Start the interactive command-line Agent session."""
+def parse_args() -> argparse.Namespace:
+    """Parse CLI options for the interactive Agent session."""
+    parser = argparse.ArgumentParser(description="Start the interactive LangChain Agent CLI.")
+    parser.add_argument(
+        "--thread-id",
+        default=DEFAULT_THREAD_ID,
+        help="Conversation memory thread id for this CLI process.",
+    )
+    parser.add_argument(
+        "--memory-backend",
+        choices=MEMORY_BACKENDS,
+        default=DEFAULT_MEMORY_BACKEND,
+        help="Short-term memory backend.",
+    )
+    parser.add_argument(
+        "--memory-path",
+        default=str(DEFAULT_MEMORY_DB_PATH),
+        help="SQLite file path when --memory-backend sqlite is used.",
+    )
+    return parser.parse_args()
+
+
+def _run_cli_session(
+    thread_id: str,
+    checkpointer: object,
+    memory_label: str,
+    console: CliConsole | None = None,
+) -> None:
+    """Run the interactive Agent session with an opened checkpointer."""
+    cli_console = console or CliConsole()
     settings = load_settings()
     available_models = get_available_models(settings)
     current_model = "deepseek"
     current_reasoning = "medium"
-    agent = build_agent_for_model(current_model, settings, reasoning_effort=current_reasoning)
+    normalized_thread_id = build_thread_config(thread_id)["configurable"]["thread_id"]
+    model_profile = _build_model_profile(
+        current_model,
+        current_reasoning,
+        normalized_thread_id,
+        memory_label,
+    )
+    agent_config = _build_agent_config(normalized_thread_id, model_profile)
+    agent = build_agent_for_model(
+        current_model,
+        settings,
+        reasoning_effort=current_reasoning,
+        checkpointer=checkpointer,
+    )
 
-    print(f"{current_model.capitalize()} Agent is ready. Type 'exit' or 'quit' to stop.")
-    print("Use `/model` to list models, or `/model <name>` to switch.")
-    print("Use `/reasoning` to list reasoning levels for GPT models.")
+    cli_console.print_startup(
+        current_model,
+        normalized_thread_id,
+        memory_label,
+    )
+    cli_console.print_model_profile(model_profile)
     while True:
-        user_input = input("\nYou: ").strip()
+        user_input = cli_console.ask_user()
         if user_input.lower() in {"exit", "quit"}:
             break
         if not user_input:
@@ -145,8 +246,18 @@ def run_cli() -> None:
                     current_model,
                     settings,
                     reasoning_effort=current_reasoning,
+                    checkpointer=checkpointer,
                 )
-            print(f"\n{message}")
+                model_profile = _build_model_profile(
+                    current_model,
+                    current_reasoning,
+                    normalized_thread_id,
+                    memory_label,
+                )
+                agent_config = _build_agent_config(normalized_thread_id, model_profile)
+            cli_console.print_message(message)
+            if changed:
+                cli_console.print_model_profile(model_profile)
             continue
         if user_input.startswith("/reasoning"):
             current_reasoning, message, changed = _handle_reasoning_command(
@@ -158,22 +269,55 @@ def run_cli() -> None:
                     current_model,
                     settings,
                     reasoning_effort=current_reasoning,
+                    checkpointer=checkpointer,
                 )
+                model_profile = _build_model_profile(
+                    current_model,
+                    current_reasoning,
+                    normalized_thread_id,
+                    memory_label,
+                )
+                agent_config = _build_agent_config(normalized_thread_id, model_profile)
                 message = _format_model_changed_message(current_model, current_reasoning)
             elif changed:
                 message = f"{message}\nIt will take effect after switching to a GPT model."
-            print(f"\n{message}")
+            cli_console.print_message(message)
+            if changed and is_gpt_model(current_model):
+                cli_console.print_model_profile(model_profile)
             continue
 
         try:
-            result = agent.invoke({"messages": build_role_tuples(user_input=user_input)})
+            result = agent.invoke(
+                {"messages": build_role_tuples(user_input=user_input)},
+                config=agent_config,
+            )
         except Exception as exc:
-            print(f"\nAgent error: {exc}")
+            cli_console.print_error(exc)
             continue
 
         answer = result["messages"][-1].content
-        print(f"\nAgent: {answer}")
+        cli_console.print_agent_answer(answer)
+
+
+def run_cli(
+    thread_id: str = DEFAULT_THREAD_ID,
+    memory_backend: str = DEFAULT_MEMORY_BACKEND,
+    memory_path: str = str(DEFAULT_MEMORY_DB_PATH),
+) -> None:
+    """Start the interactive command-line Agent session."""
+    if memory_backend == "sqlite":
+        memory_label = f"sqlite ({memory_path})"
+    else:
+        memory_label = memory_backend
+
+    with open_memory_checkpointer(memory_backend, memory_path) as checkpointer:
+        _run_cli_session(thread_id, checkpointer, memory_label)
 
 
 if __name__ == "__main__":
-    run_cli()
+    args = parse_args()
+    run_cli(
+        thread_id=args.thread_id,
+        memory_backend=args.memory_backend,
+        memory_path=args.memory_path,
+    )

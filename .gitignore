@@ -29,6 +29,13 @@ dist/
 logs/
 tmp/
 temp/
+.data/
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
 
 # IDE and editor files
 .idea/

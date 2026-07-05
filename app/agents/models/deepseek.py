@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from app.agents.factory import build_chat_agent
 from app.config import Settings, load_settings
 from app.llms import build_deepseek_llm
@@ -13,13 +15,16 @@ approval before retrying with allow_outside_project=True.
 """.strip()
 
 
-def build_deepseek_agent(settings: Settings | None = None):
+def build_deepseek_agent(
+    settings: Settings | None = None,
+    checkpointer: Any | None = None,
+):
     """Create the project DeepSeek agent with configured tools."""
     effective_settings = settings or load_settings()
     llm = build_deepseek_llm(effective_settings)
-    return build_chat_agent(llm, SYSTEM_PROMPT)
+    return build_chat_agent(llm, SYSTEM_PROMPT, checkpointer=checkpointer)
 
 
-def build_agent():
+def build_agent(checkpointer: Any | None = None):
     """Create the default project agent."""
-    return build_deepseek_agent()
+    return build_deepseek_agent(checkpointer=checkpointer)

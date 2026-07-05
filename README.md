@@ -106,6 +106,9 @@ conda activate langchain
 
 # 安装依赖
 pip install -r requirements.txt
+
+# CLI 输出美化依赖由 conda 管理
+conda install -y rich
 ```
 
 ### 3. 运行 Agent
@@ -114,7 +117,22 @@ pip install -r requirements.txt
 python main.py
 ```
 
-默认使用 DeepSeek Agent。可以通过修改 `main.py` 切换提供商。
+默认使用 DeepSeek Agent。进入 CLI 后可以用 `/model` 查看或切换模型，用 `/reasoning` 调整 GPT 推理等级。
+
+CLI 默认启用 SQLite 短期对话记忆，同一个 `thread_id` 会复用同一条多轮上下文，退出后再次启动仍可继续：
+
+```bash
+python main.py --thread-id user-123
+```
+
+默认记忆文件为 `.data/agent_memory.sqlite`。也可以指定路径，或切换成仅当前进程有效的内存模式：
+
+```bash
+python main.py --thread-id user-123 --memory-path .data/user-123.sqlite
+python main.py --memory-backend memory
+```
+
+CLI 会在启动和模型切换时输出当前 model profile，包括模型名、provider、reasoning 和 memory 信息。每次 Agent 调用也会把同一份 profile 写入 LangChain config 的 `metadata.model_profile` 和 `tags`，开启 LangSmith 后可以按这些字段过滤 trace。
 
 ## 架构说明
 

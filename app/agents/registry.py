@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from app.agents.models.claude import build_claude_agent
 from app.agents.models.deepseek import build_agent, build_deepseek_agent
@@ -24,24 +25,31 @@ MODEL_ENTRIES: list[ModelEntry] = [
         name="deepseek",
         provider="deepseek",
         configured=lambda settings: bool(settings.deepseek_api_key),
-        builder=lambda settings, reasoning_effort=None: build_deepseek_agent(settings=settings),
+        builder=lambda settings, reasoning_effort=None, checkpointer=None: build_deepseek_agent(
+            settings=settings,
+            checkpointer=checkpointer,
+        ),
         description="DeepSeek default model from your configuration.",
     ),
     ModelEntry(
         name="claude",
         provider="claude",
         configured=lambda settings: bool(settings.claude_api_key),
-        builder=lambda settings, reasoning_effort=None: build_claude_agent(settings=settings),
+        builder=lambda settings, reasoning_effort=None, checkpointer=None: build_claude_agent(
+            settings=settings,
+            checkpointer=checkpointer,
+        ),
         description="Claude default model from your configuration.",
     ),
     ModelEntry(
         name="gpt-5.5",
         provider="gpt",
         configured=lambda settings: bool(settings.gpt_api_key),
-        builder=lambda settings, reasoning_effort=None: build_gpt_agent(
+        builder=lambda settings, reasoning_effort=None, checkpointer=None: build_gpt_agent(
             settings=settings,
             model_name="gpt-5.5",
             reasoning_effort=reasoning_effort,
+            checkpointer=checkpointer,
         ),
         description="Frontier model for complex coding, research, and real-world work.",
     ),
@@ -49,10 +57,11 @@ MODEL_ENTRIES: list[ModelEntry] = [
         name="gpt-5.4",
         provider="gpt",
         configured=lambda settings: bool(settings.gpt_api_key),
-        builder=lambda settings, reasoning_effort=None: build_gpt_agent(
+        builder=lambda settings, reasoning_effort=None, checkpointer=None: build_gpt_agent(
             settings=settings,
             model_name="gpt-5.4",
             reasoning_effort=reasoning_effort,
+            checkpointer=checkpointer,
         ),
         description="Strong model for everyday coding.",
     ),
@@ -60,10 +69,11 @@ MODEL_ENTRIES: list[ModelEntry] = [
         name="gpt-5.4-mini",
         provider="gpt",
         configured=lambda settings: bool(settings.gpt_api_key),
-        builder=lambda settings, reasoning_effort=None: build_gpt_agent(
+        builder=lambda settings, reasoning_effort=None, checkpointer=None: build_gpt_agent(
             settings=settings,
             model_name="gpt-5.4-mini",
             reasoning_effort=reasoning_effort,
+            checkpointer=checkpointer,
         ),
         description="Small, fast, and cost-efficient model for simpler coding tasks.",
     ),
@@ -71,10 +81,11 @@ MODEL_ENTRIES: list[ModelEntry] = [
         name="gpt-5.3-codex",
         provider="gpt",
         configured=lambda settings: bool(settings.gpt_api_key),
-        builder=lambda settings, reasoning_effort=None: build_gpt_agent(
+        builder=lambda settings, reasoning_effort=None, checkpointer=None: build_gpt_agent(
             settings=settings,
             model_name="gpt-5.3-codex",
             reasoning_effort=reasoning_effort,
+            checkpointer=checkpointer,
         ),
         description="Coding-optimized model.",
     ),
@@ -82,10 +93,11 @@ MODEL_ENTRIES: list[ModelEntry] = [
         name="gpt-5.2",
         provider="gpt",
         configured=lambda settings: bool(settings.gpt_api_key),
-        builder=lambda settings, reasoning_effort=None: build_gpt_agent(
+        builder=lambda settings, reasoning_effort=None, checkpointer=None: build_gpt_agent(
             settings=settings,
             model_name="gpt-5.2",
             reasoning_effort=reasoning_effort,
+            checkpointer=checkpointer,
         ),
         description="General-purpose GPT-5.2 model.",
     ),
@@ -99,13 +111,18 @@ def build_agent_for_model(
     model_name: str,
     settings: Settings,
     reasoning_effort: str | None = None,
+    checkpointer: Any | None = None,
 ):
     """Build an agent for a supported model name."""
     normalized_name = model_name.strip().lower()
     entry = MODEL_ENTRIES_BY_NAME.get(normalized_name)
     if entry is None:
         raise ValueError(f"Unsupported model: {model_name}")
-    return entry.builder(settings, reasoning_effort=reasoning_effort)
+    return entry.builder(
+        settings,
+        reasoning_effort=reasoning_effort,
+        checkpointer=checkpointer,
+    )
 
 
 def get_available_models(settings: Settings) -> dict[str, bool]:

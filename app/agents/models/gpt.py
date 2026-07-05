@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from app.agents.factory import build_chat_agent
 from app.config import Settings, load_settings
 from app.llms import build_gpt_llm
@@ -17,6 +19,7 @@ def build_gpt_agent(
     settings: Settings | None = None,
     model_name: str | None = None,
     reasoning_effort: str | None = None,
+    checkpointer: Any | None = None,
 ):
     """Create the project GPT agent with configured tools."""
     effective_settings = settings or load_settings()
@@ -25,4 +28,4 @@ def build_gpt_agent(
         model_name=model_name,
         reasoning_effort=reasoning_effort,
     )
-    return build_chat_agent(llm, SYSTEM_PROMPT)
+    return build_chat_agent(llm, SYSTEM_PROMPT, checkpointer=checkpointer)
