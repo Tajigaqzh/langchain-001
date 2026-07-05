@@ -10,6 +10,7 @@ def main() -> None:
         thread_id=args.thread_id,
         memory_backend=args.memory_backend,
         memory_path=args.memory_path,
+        stream=args.stream,
     )
 
 

@@ -94,7 +94,7 @@ GPT_MODEL_KWARGS={}
 也可以直接使用环境变量：
 
 ```bash
-export DEEPSEEK_API_KEY=your_deepseek_api_key
+export GPT_API_KEY=your_gpt_api_key
 ```
 
 ### 2. 安装依赖
@@ -117,7 +117,7 @@ conda install -y rich
 python main.py
 ```
 
-默认使用 DeepSeek Agent。进入 CLI 后可以用 `/model` 查看或切换模型，用 `/reasoning` 调整 GPT 推理等级。
+默认使用 GPT Agent（`gpt-5.5`）。进入 CLI 后可以用 `/model` 查看或切换模型，用 `/reasoning` 调整 GPT 推理等级。
 
 CLI 默认启用 SQLite 短期对话记忆，同一个 `thread_id` 会复用同一条多轮上下文，退出后再次启动仍可继续：
 
@@ -131,6 +131,55 @@ python main.py --thread-id user-123
 python main.py --thread-id user-123 --memory-path .data/user-123.sqlite
 python main.py --memory-backend memory
 ```
+
+如需默认启用流式输出，在 `.env` 中配置：
+
+```env
+AGENT_STREAM=true
+```
+
+模型调用失败时会自动重试，默认最多重试 10 次，每次间隔 3 秒：
+
+```env
+AGENT_MODEL_RETRY_ATTEMPTS=10
+AGENT_MODEL_RETRY_DELAY=3
+```
+
+如模型服务一次返回较大的 chunk，可以通过以下参数让终端输出更平滑：
+
+```env
+AGENT_STREAM_CHUNK_SIZE=4
+AGENT_STREAM_DELAY=0.015
+```
+
+也可以临时用 `--stream` 或 `--no-stream` 覆盖是否流式输出。
+
+如需接入 MCP 工具，先安装可选适配器：
+
+```bash
+pip install langchain-mcp-adapters
+```
+
+然后在 `.env` 中指定 MCP 配置文件：
+
+```env
+AGENT_MCP_CONFIG_PATH=.data/mcp.json
+```
+
+配置文件示例：
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    }
+  }
+}
+```
+
+未配置 `AGENT_MCP_CONFIG_PATH` 时不会加载 MCP。配置了 MCP 但未安装适配器时，CLI 会在启动时提示安装 `langchain-mcp-adapters`。
 
 CLI 会在启动和模型切换时输出当前 model profile，包括模型名、provider、reasoning 和 memory 信息。每次 Agent 调用也会把同一份 profile 写入 LangChain config 的 `metadata.model_profile` 和 `tags`，开启 LangSmith 后可以按这些字段过滤 trace。
 
@@ -282,6 +331,10 @@ def my_new_tool(param: str) -> str:
 - 提交信息：使用约定式提交（`feat:`, `fix:`, `refactor:`, `docs:` 等）
 - 配置：必须通过 `app/config.py`，禁止直接读取 `.env`
 - 测试：所有新功能需要测试覆盖
+
+### TODO
+
+- 为 Shell/Python/Git 等执行型工具增加统一 `CommandRunner`，支持受限环境变量、工作目录限制、超时、网络策略和写入路径审批。
 
 详细开发规范见 `CLAUDE.md`。
 

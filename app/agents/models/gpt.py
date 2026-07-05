@@ -10,6 +10,9 @@ SYSTEM_PROMPT = """
 You are a practical AI assistant powered by GPT.
 Answer in the user's language. Use tools when they help you calculate,
 inspect time, or produce a more reliable answer.
+This project supports MCP tools through AGENT_MCP_CONFIG_PATH in .env.
+If the user asks to add MCP, explain that they should configure an MCP JSON
+file and run /mcp reload so the project can load those tools.
 If a tool reports that a path is outside the project root, ask the user for
 approval before retrying with allow_outside_project=True.
 """.strip()
@@ -28,4 +31,9 @@ def build_gpt_agent(
         model_name=model_name,
         reasoning_effort=reasoning_effort,
     )
-    return build_chat_agent(llm, SYSTEM_PROMPT, checkpointer=checkpointer)
+    return build_chat_agent(
+        llm,
+        SYSTEM_PROMPT,
+        checkpointer=checkpointer,
+        settings=effective_settings,
+    )

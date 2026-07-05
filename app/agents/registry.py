@@ -6,7 +6,7 @@ from typing import Any
 from app.agents.models.claude import build_claude_agent
 from app.agents.models.deepseek import build_agent, build_deepseek_agent
 from app.agents.models.gpt import build_gpt_agent
-from app.config import Settings
+from app.config import DEFAULT_AGENT_DEFAULT_MODEL, Settings
 
 
 @dataclass(frozen=True)
@@ -104,7 +104,7 @@ MODEL_ENTRIES: list[ModelEntry] = [
 ]
 
 MODEL_ENTRIES_BY_NAME = {entry.name: entry for entry in MODEL_ENTRIES}
-DEFAULT_MODEL_NAME = "deepseek"
+DEFAULT_MODEL_NAME = DEFAULT_AGENT_DEFAULT_MODEL
 
 
 def build_agent_for_model(

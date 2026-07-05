@@ -1,9 +1,74 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Protocol
+
 from app.agents import is_gpt_model, list_supported_models
 
 REASONING_LEVELS = ["low", "medium", "high", "extra_high"]
-DEFAULT_GPT_MODEL = "gpt-5.5"
+
+
+class CommandContext(Protocol):
+    """Mutable state and services required by slash commands."""
+
+    current_model: str
+    current_reasoning: str
+
+    def handle_model(self, user_input: str) -> None:
+        """Handle a /model command."""
+
+    def handle_reasoning(self, user_input: str) -> None:
+        """Handle a /reasoning command."""
+
+    def handle_mcp(self, user_input: str) -> None:
+        """Handle an /mcp command."""
+
+
+class CliCommand(Protocol):
+    """Executable slash command."""
+
+    prefix: str
+
+    def execute(self, user_input: str, context: CommandContext) -> None:
+        """Execute a slash command against the current CLI context."""
+
+
+@dataclass(frozen=True)
+class ModelCommand:
+    """Slash command for listing or switching models."""
+
+    prefix: str = "/model"
+
+    def execute(self, user_input: str, context: CommandContext) -> None:
+        """Handle the /model command."""
+        context.handle_model(user_input)
+
+
+@dataclass(frozen=True)
+class ReasoningCommand:
+    """Slash command for listing or switching GPT reasoning levels."""
+
+    prefix: str = "/reasoning"
+
+    def execute(self, user_input: str, context: CommandContext) -> None:
+        """Handle the /reasoning command."""
+        context.handle_reasoning(user_input)
+
+
+@dataclass(frozen=True)
+class McpCommand:
+    """Slash command for MCP tool management."""
+
+    prefix: str = "/mcp"
+
+    def execute(self, user_input: str, context: CommandContext) -> None:
+        """Handle the /mcp command."""
+        context.handle_mcp(user_input)
+
+
+def default_commands() -> tuple[CliCommand, ...]:
+    """Return the default slash command registry."""
+    return (ModelCommand(), ReasoningCommand(), McpCommand())
 
 
 def format_model_changed_message(model_name: str, reasoning_level: str) -> str:
@@ -17,6 +82,7 @@ def format_model_list(
     current_model: str,
     available_models: dict[str, bool],
     current_reasoning: str,
+    default_model: str,
 ) -> str:
     """Render a human-readable model list for the CLI."""
     lines = [f"Current model: {current_model}"]
@@ -26,7 +92,7 @@ def format_model_list(
     lines.append("Available models:")
     for index, entry in enumerate(list_supported_models(), start=1):
         current_label = " (current)" if entry.name == current_model else ""
-        default_label = " (default)" if entry.name == DEFAULT_GPT_MODEL else ""
+        default_label = " (default)" if entry.name == default_model else ""
         status = "" if available_models.get(entry.name, False) else "  [not configured: missing API key]"
         lines.append(
             f"{index}. {entry.name}{default_label}{current_label}  {entry.description}{status}"
@@ -57,12 +123,18 @@ def handle_model_command(
     current_model: str,
     available_models: dict[str, bool],
     current_reasoning: str,
+    default_model: str,
 ):
     """Handle the /model CLI command and return the updated model if changed."""
     model_entries = list_supported_models()
     parts = user_input.split(maxsplit=1)
     if len(parts) == 1:
-        return current_model, format_model_list(current_model, available_models, current_reasoning), False
+        return current_model, format_model_list(
+            current_model,
+            available_models,
+            current_reasoning,
+            default_model,
+        ), False
 
     requested_model = parts[1].strip().lower()
     if requested_model.isdigit():

@@ -14,6 +14,7 @@ from app.tools.filesystem import (
     write_text_file,
 )
 from app.tools.git_tools import git_diff, git_status
+from app.tools.mcp import load_mcp_tools
 from app.tools.network_tools import get_local_ip, get_public_ip
 from app.tools.python_tools import (
     compile_project,
@@ -39,7 +40,7 @@ from app.tools.web_tools import fetch_webpage, web_search
 __all__ = ["get_tools"]
 
 
-def get_tools():
+def get_local_tools():
     """Return all tools available to the default Agent."""
     return [
         current_time,
@@ -77,3 +78,11 @@ def get_tools():
         web_search,
         fetch_webpage,
     ]
+
+
+def get_tools(settings=None):
+    """Return local tools plus any tools loaded from configured MCP servers."""
+    tools = get_local_tools()
+    if settings is not None:
+        tools.extend(load_mcp_tools(settings))
+    return tools
